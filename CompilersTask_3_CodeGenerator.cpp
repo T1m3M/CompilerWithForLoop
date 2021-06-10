@@ -576,7 +576,7 @@ TreeNode* AssignStmt(CompilerInfo* pci, ParseInfo* ppi, bool isForLoop)
 TreeNode* StmtSeq(CompilerInfo*, ParseInfo*);
 
 // from <mathexpr> to <mathexpr>
-TreeNode* ForCondition(CompilerInfo* pci, ParseInfo* ppi)
+TreeNode* ForCondition(CompilerInfo* pci, ParseInfo* ppi, char* id_variable)
 {
     pci->debug_file.Out("Start ForCondition");
 
@@ -584,8 +584,13 @@ TreeNode* ForCondition(CompilerInfo* pci, ParseInfo* ppi)
     tree->node_kind=FOR_CONDITION;
     tree->line_num=pci->in_file.cur_line_num;
 
+    // the id variable node to be incremented
+    TreeNode* id_tree = new TreeNode;
+    id_tree->node_kind = ID_NODE; id_tree->id = id_variable;
+    tree->child[0] = id_tree;
+
     // the mathexpr to be compared with the counter
-    Match(pci, ppi, TO); tree->child[0] = MathExpr(pci, ppi);
+    Match(pci, ppi, TO); tree->child[1] = MathExpr(pci, ppi);
 
     pci->debug_file.Out("End ForCondition");
     return tree;
@@ -646,7 +651,7 @@ TreeNode* ForStmt(CompilerInfo* pci, ParseInfo* ppi)
 
     // match initialization, condition, increment and body
     tree->child[0] = AssignStmt(pci, ppi, true);
-    tree->child[1] = ForCondition(pci, ppi);
+    tree->child[1] = ForCondition(pci, ppi, tree->child[0]->id);
     tree->child[2] = ForBody(pci, ppi, tree->child[0]->id);
 
     pci->debug_file.Out("End ForStmt");
@@ -962,6 +967,24 @@ int Evaluate(TreeNode* node, SymbolTable* symbol_table, int* variables)
     if(node->node_kind==NUM_NODE) return node->num;
     if(node->node_kind==ID_NODE) return variables[symbol_table->Find(node->id)->memloc];
 
+    // Evaluating for loop condition
+    if(node->node_kind==FOR_CONDITION)
+    {
+        int a=Evaluate(node->child[0], symbol_table, variables);
+        int b=Evaluate(node->child[1], symbol_table, variables);
+        printf("a = %d, b = %d\n", a, b);
+
+        return a > b; // if the counter passed the end value
+    }
+
+    // Evaluating for loop increment
+    if(node->node_kind==FOR_INCREMENT)
+    {
+        int a=Evaluate(node->child[1], symbol_table, variables);
+        int mem_location = symbol_table->Find(node->child[0]->id)->memloc;
+        return variables[mem_location] + a;
+    }
+
     int a=Evaluate(node->child[0], symbol_table, variables);
     int b=Evaluate(node->child[1], symbol_table, variables);
 
@@ -1007,6 +1030,25 @@ void RunProgram(TreeNode* node, SymbolTable* symbol_table, int* variables)
         }
         while(!Evaluate(node->child[1], symbol_table, variables));
     }
+    if(node->node_kind==FOR_NODE)
+    {
+        RunProgram(node->child[0], symbol_table, variables); // assign
+        do {
+            RunProgram(node->child[2], symbol_table, variables); // body
+        } while(!Evaluate(node->child[1], symbol_table, variables)); // condition
+
+    }
+    if(node->node_kind==FOR_INCREMENT)
+    {
+        int v = Evaluate(node, symbol_table, variables);
+        variables[symbol_table->Find(node->child[0]->id)->memloc] = v;
+    }
+    if(node->node_kind==FOR_BODY)
+    {
+        RunProgram(node->child[0], symbol_table, variables); // body
+        RunProgram(node->child[1], symbol_table, variables); // increment
+    }
+
     if(node->sibling) RunProgram(node->sibling, symbol_table, variables);
 }
 
