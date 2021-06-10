@@ -310,14 +310,14 @@ void GetNextToken(CompilerInfo* pci, Token* ptoken)
 
 enum NodeKind{
                 IF_NODE, REPEAT_NODE, ASSIGN_NODE, READ_NODE, WRITE_NODE,
-                OPER_NODE, NUM_NODE, ID_NODE
+                OPER_NODE, NUM_NODE, ID_NODE, FOR_NODE
              };
 
 // Used for debugging only /////////////////////////////////////////////////////////
 const char* NodeKindStr[]=
             {
                 "If", "Repeat", "Assign", "Read", "Write",
-                "Oper", "Num", "ID"
+                "Oper", "Num", "ID", "for"
             };
 
 enum ExprDataType {VOID, INTEGER, BOOLEAN};
