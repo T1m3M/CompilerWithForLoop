@@ -166,7 +166,7 @@ enum TokenType{
                 LEFT_BRACE, RIGHT_BRACE,
                 ID, NUM,
                 ENDFILE, ERROR,
-                STARTFOR, FOR, FROM, TO, INC, ENDFOR
+                STARTFOR, FOR, FROM, TO, INC, ENDFOR, BREAK
               };
 
 // Used for debugging only /////////////////////////////////////////////////////////
@@ -180,7 +180,7 @@ const char* TokenTypeStr[]=
                 "LeftBrace", "RightBrace",
                 "ID", "Num",
                 "EndFile", "Error",
-                "startfor", "for", "from", "to", "inc", "endfor"
+                "StartFor", "For", "From", "To", "Inc", "EndFor", "Break"
             };
 
 struct Token
@@ -204,6 +204,7 @@ const Token reserved_words[]=
     Token(TO, "to"),
     Token(INC, "inc"),
     Token(ENDFOR, "endfor"),
+    Token(BREAK, "break"),
     Token(REPEAT, "repeat"),
     Token(UNTIL, "until"),
     Token(READ, "read"),
@@ -301,9 +302,10 @@ void GetNextToken(CompilerInfo* pci, Token* ptoken)
 
 // program -> stmtseq
 // stmtseq -> stmt { ; stmt }
-// stmt -> ifstmt | forstmt | repeatstmt | assignstmt | readstmt | writestmt
+// stmt -> ifstmt | forstmt | break | repeatstmt | assignstmt | readstmt | writestmt
 // ifstmt -> if exp then stmtseq [ else stmtseq ] end
 // <forstmt> -> for <identifier> from <mathexpr> to <mathexpr> inc <mathexpr> startfor <stmtseq> endfor
+// <breakstmt> -> break
 // repeatstmt -> repeat stmtseq until expr
 // assignstmt -> identifier := expr
 // readstmt -> read identifier
@@ -316,14 +318,14 @@ void GetNextToken(CompilerInfo* pci, Token* ptoken)
 
 enum NodeKind{
                 IF_NODE, REPEAT_NODE, ASSIGN_NODE, READ_NODE, WRITE_NODE,
-                OPER_NODE, NUM_NODE, ID_NODE, FOR_NODE, FOR_CONDITION, FOR_BODY, FOR_INCREMENT
+                OPER_NODE, NUM_NODE, ID_NODE, FOR_NODE, FOR_CONDITION, FOR_BODY, FOR_INCREMENT, BREAK_NODE
              };
 
 // Used for debugging only /////////////////////////////////////////////////////////
 const char* NodeKindStr[]=
             {
                 "If", "Repeat", "Assign", "Read", "Write",
-                "Oper", "Num", "ID", "For", "For_condition", "For_body", "For_increment"
+                "Oper", "Num", "ID", "For", "For_condition", "For_body", "For_increment", "Break"
             };
 
 enum ExprDataType {VOID, INTEGER, BOOLEAN};
@@ -574,7 +576,7 @@ TreeNode* AssignStmt(CompilerInfo* pci, ParseInfo* ppi, bool isForLoop)
 TreeNode* StmtSeq(CompilerInfo*, ParseInfo*);
 
 // from <mathexpr> to <mathexpr>
-TreeNode* ForCondition(CompilerInfo* pci, ParseInfo* ppi, TreeNode* from_expr)
+TreeNode* ForCondition(CompilerInfo* pci, ParseInfo* ppi)
 {
     pci->debug_file.Out("Start ForCondition");
 
@@ -582,15 +584,15 @@ TreeNode* ForCondition(CompilerInfo* pci, ParseInfo* ppi, TreeNode* from_expr)
     tree->node_kind=FOR_CONDITION;
     tree->line_num=pci->in_file.cur_line_num;
 
-    tree->child[0] = from_expr;
-    Match(pci, ppi, TO); tree->child[1] = MathExpr(pci, ppi);
+    // the mathexpr to be compared with the counter
+    Match(pci, ppi, TO); tree->child[0] = MathExpr(pci, ppi);
 
     pci->debug_file.Out("End ForCondition");
     return tree;
 }
 
 // inc <mathexpr>
-TreeNode* ForInc(CompilerInfo* pci, ParseInfo* ppi, TreeNode* from_expr)
+TreeNode* ForInc(CompilerInfo* pci, ParseInfo* ppi, char* id_variable)
 {
     pci->debug_file.Out("Start ForInc");
 
@@ -598,7 +600,12 @@ TreeNode* ForInc(CompilerInfo* pci, ParseInfo* ppi, TreeNode* from_expr)
     tree->node_kind=FOR_INCREMENT;
     tree->line_num=pci->in_file.cur_line_num;
 
-    tree->child[0] = from_expr;
+    // the id variable node to be incremented
+    TreeNode* id_tree = new TreeNode;
+    id_tree->node_kind = ID_NODE; id_tree->id = id_variable;
+    tree->child[0] = id_tree;
+
+    // increment value
     Match(pci, ppi, INC); tree->child[1] = MathExpr(pci, ppi);
 
     pci->debug_file.Out("End ForInc");
@@ -606,7 +613,7 @@ TreeNode* ForInc(CompilerInfo* pci, ParseInfo* ppi, TreeNode* from_expr)
 }
 
 // inc <mathexpr> startfor <stmtseq> endfor
-TreeNode* ForBody(CompilerInfo* pci, ParseInfo* ppi, TreeNode* from_expr)
+TreeNode* ForBody(CompilerInfo* pci, ParseInfo* ppi, char* id_variable)
 {
     pci->debug_file.Out("Start ForBody");
 
@@ -614,8 +621,11 @@ TreeNode* ForBody(CompilerInfo* pci, ParseInfo* ppi, TreeNode* from_expr)
     tree->node_kind=FOR_BODY;
     tree->line_num=pci->in_file.cur_line_num;
 
-    tree->child[1] = ForInc(pci, ppi, from_expr);
+    // get the increment operands
+    tree->child[1] = ForInc(pci, ppi, id_variable);
+    // match body of the loop
     Match(pci, ppi, STARTFOR); tree->child[0] = StmtSeq(pci, ppi);
+    // match the end
     Match(pci, ppi, ENDFOR);
 
     pci->debug_file.Out("End ForBody");
@@ -631,13 +641,31 @@ TreeNode* ForStmt(CompilerInfo* pci, ParseInfo* ppi)
     tree->node_kind=FOR_NODE;
     tree->line_num=pci->in_file.cur_line_num;
 
+    // match the start
     Match(pci, ppi, FOR);
 
+    // match initialization, condition, increment and body
     tree->child[0] = AssignStmt(pci, ppi, true);
-    tree->child[1] = ForCondition(pci, ppi, tree->child[0]->child[0]);
-    tree->child[2] = ForBody(pci, ppi, tree->child[0]->child[0]);
+    tree->child[1] = ForCondition(pci, ppi);
+    tree->child[2] = ForBody(pci, ppi, tree->child[0]->id);
 
     pci->debug_file.Out("End ForStmt");
+    return tree;
+}
+
+// <breakstmt> -> break
+TreeNode* BreakStmt(CompilerInfo* pci, ParseInfo* ppi)
+{
+    pci->debug_file.Out("Start BreakStmt");
+
+    TreeNode* tree=new TreeNode;
+    tree->node_kind=BREAK_NODE;
+    tree->line_num=pci->in_file.cur_line_num;
+
+    // match break keyword
+    Match(pci, ppi, BREAK);
+
+    pci->debug_file.Out("End BreakStmt");
     return tree;
 }
 
@@ -669,6 +697,7 @@ TreeNode* IfStmt(CompilerInfo* pci, ParseInfo* ppi)
     Match(pci, ppi, IF); tree->child[0]=Expr(pci, ppi);
     Match(pci, ppi, THEN); tree->child[1]=StmtSeq(pci, ppi);
     if(ppi->next_token.type==ELSE) {Match(pci, ppi, ELSE); tree->child[2]=StmtSeq(pci, ppi);}
+
     Match(pci, ppi, END);
 
     pci->debug_file.Out("End IfStmt");
@@ -683,7 +712,8 @@ TreeNode* Stmt(CompilerInfo* pci, ParseInfo* ppi)
     // Compare the next token with the First() of possible statements
     TreeNode* tree=0;
     if(ppi->next_token.type==IF) tree=IfStmt(pci, ppi);
-    else if(ppi->next_token.type==FOR) tree=ForStmt(pci, ppi);
+    else if(ppi->next_token.type==FOR) tree=ForStmt(pci, ppi); // for statement
+    else if(ppi->next_token.type==BREAK) tree=BreakStmt(pci, ppi); // break statement
     else if(ppi->next_token.type==REPEAT) tree=RepeatStmt(pci, ppi);
     else if(ppi->next_token.type==ID) tree=AssignStmt(pci, ppi, false);
     else if(ppi->next_token.type==READ) tree=ReadStmt(pci, ppi);
@@ -704,7 +734,7 @@ TreeNode* StmtSeq(CompilerInfo* pci, ParseInfo* ppi)
 
     // If we did not reach one of the Follow() of StmtSeq(), we are not done yet
     while(ppi->next_token.type!=ENDFILE && ppi->next_token.type!=END &&
-          ppi->next_token.type!=ELSE && ppi->next_token.type!=UNTIL)
+          ppi->next_token.type!=ELSE && ppi->next_token.type!=UNTIL && ppi->next_token.type!=ENDFOR)
     {
         Match(pci, ppi, SEMI_COLON);
         TreeNode* next_tree=Stmt(pci, ppi);
