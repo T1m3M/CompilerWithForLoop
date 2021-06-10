@@ -165,7 +165,8 @@ enum TokenType{
                 LEFT_PAREN, RIGHT_PAREN,
                 LEFT_BRACE, RIGHT_BRACE,
                 ID, NUM,
-                ENDFILE, ERROR
+                ENDFILE, ERROR,
+                STARTFOR, FOR, FROM, TO, INC, ENDFOR
               };
 
 // Used for debugging only /////////////////////////////////////////////////////////
@@ -178,7 +179,8 @@ const char* TokenTypeStr[]=
                 "LeftParen", "RightParen",
                 "LeftBrace", "RightBrace",
                 "ID", "Num",
-                "EndFile", "Error"
+                "EndFile", "Error",
+                "startfor", "for", "from", "to", "inc", "endfor"
             };
 
 struct Token
@@ -295,6 +297,7 @@ void GetNextToken(CompilerInfo* pci, Token* ptoken)
 // stmtseq -> stmt { ; stmt }
 // stmt -> ifstmt | repeatstmt | assignstmt | readstmt | writestmt
 // ifstmt -> if exp then stmtseq [ else stmtseq ] end
+// <forstmt> -> for <identifier> from <mathexpr> to <mathexpr> inc <mathexpr> startfor <stmtseq> endfor
 // repeatstmt -> repeat stmtseq until expr
 // assignstmt -> identifier := expr
 // readstmt -> read identifier
