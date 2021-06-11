@@ -4,20 +4,115 @@
 using namespace std;
 
 /*
-{ Sample program
-  in TINY language
-  compute factorial
-}
+{ test cases }
 
-read x; {input an integer}
-if 0<x then {compute only if x>=1}
-  fact:=1;
-  repeat
-    fact := fact * x;
-    x:=x-1
-  until x=0;
-  write fact {output factorial}
-end
+sum:=0;
+for i from 1 to 20 inc 2
+    startfor
+        sum:=sum+i;
+        if i=11 then break end
+    endfor;
+write sum {sum = 36}
+
+sum:=0;
+for i from 1 to 0-20 inc 0-2
+    startfor
+        sum:=sum+i;
+        if i=0-11 then break end
+    endfor;
+write sum {sum = -35}
+
+sum:=0;
+for i from 1 to 20 inc 2
+    startfor
+        sum:=sum+i;
+        break
+    endfor;
+write sum {sum = 1}
+
+n:=10;
+two_pow_n:=1;
+for i from 1 to n inc 1
+  startfor
+    two_pow_n:=two_pow_n*2
+  endfor;
+write two_pow_n {two_pow_n = 1024}
+
+n:=5;
+factorial:=1;
+for i from 1 to n inc 1
+  startfor
+    factorial:=factorial*i
+  endfor;
+write factorial {factorial = 120}
+
+sum_one:=0;
+sum_two:=0;
+for i from 1 to 10 inc 1
+  startfor
+    sum_one:=sum_one+i;
+    for j from 1 to 10 inc 1
+      startfor
+        sum_two:=sum_two+j
+      endfor
+  endfor;
+write sum_one; {sum_one = 50}
+write sum_two {sum_two = 550}
+
+sum_one:=0;
+sum_two:=0;
+for i from 1 to 0-10 inc 0-1
+  startfor
+    sum_one:=sum_one+i;
+    for j from 1 to 10 inc 1
+      startfor
+        sum_two:=sum_two+j
+      endfor
+  endfor;
+write sum_one; {sum_one = -54}
+write sum_two {sum_two = 550}
+
+sum_one:=0;
+sum_two:=0;
+for i from 0-1 to 0-10 inc 0-1
+  startfor
+    sum_one:=sum_one+i;
+    for j from 0-1 to 0-10 inc 0-1
+      startfor
+        sum_two:=sum_two+j
+      endfor
+  endfor;
+write sum_one; {sum_one = -55}
+write sum_two {sum_two = -550}
+
+sum_one:=0;
+sum_two:=0;
+for i from 1 to 10 inc 1
+  startfor
+    sum_one:=sum_one+i;
+    for j from 1 to 10 inc 1
+      startfor
+        sum_two:=sum_two+j
+      endfor;
+    break
+  endfor;
+write sum_one; {sum_one = 1}
+write sum_two {sum_two = 55}
+
+sum_one:=0;
+sum_two:=0;
+for i from 1 to 10 inc 1
+  startfor
+    sum_one:=sum_one+i;
+    for j from 1 to 10 inc 1
+      startfor
+        sum_two:=sum_two+j;
+        break
+      endfor;
+    break
+  endfor;
+write sum_one; {sum_one = 1}
+write sum_two {sum_two = 1}
 */
 
 // sequence of statements separated by ;
@@ -555,6 +650,7 @@ TreeNode* AssignStmt(CompilerInfo* pci, ParseInfo* ppi, bool isForLoop)
     tree->node_kind=ASSIGN_NODE;
     tree->line_num=pci->in_file.cur_line_num;
 
+    // check if the assignment is initializtion to a for loop variable
     if (isForLoop)
     {
         if(ppi->next_token.type==ID) AllocateAndCopy(&tree->id, ppi->next_token.str);
@@ -972,7 +1068,8 @@ int Evaluate(TreeNode* node, SymbolTable* symbol_table, int* variables)
     {
         int a=Evaluate(node->child[0], symbol_table, variables);
         int b=Evaluate(node->child[1], symbol_table, variables);
-        printf("a = %d, b = %d\n", a, b);
+
+        if (node->child[1]->node_kind == OPER_NODE) return a < b;
 
         return a > b; // if the counter passed the end value
     }
@@ -998,6 +1095,8 @@ int Evaluate(TreeNode* node, SymbolTable* symbol_table, int* variables)
     throw 0;
     return 0;
 }
+
+bool isBreak = false; // flag for break status
 
 void RunProgram(TreeNode* node, SymbolTable* symbol_table, int* variables)
 {
@@ -1030,24 +1129,31 @@ void RunProgram(TreeNode* node, SymbolTable* symbol_table, int* variables)
         }
         while(!Evaluate(node->child[1], symbol_table, variables));
     }
+    // for node running logic
     if(node->node_kind==FOR_NODE)
     {
         RunProgram(node->child[0], symbol_table, variables); // assign
         do {
             RunProgram(node->child[2], symbol_table, variables); // body
+            if (isBreak){isBreak = false; break;} // break logic with reset
         } while(!Evaluate(node->child[1], symbol_table, variables)); // condition
 
     }
+    // for increment logic to update the loop's variable
     if(node->node_kind==FOR_INCREMENT)
     {
         int v = Evaluate(node, symbol_table, variables);
         variables[symbol_table->Find(node->child[0]->id)->memloc] = v;
     }
+    // executing statements inside body of the loop & increment at the end
     if(node->node_kind==FOR_BODY)
     {
         RunProgram(node->child[0], symbol_table, variables); // body
+        if (isBreak) return;
         RunProgram(node->child[1], symbol_table, variables); // increment
     }
+    // setting the isBreak flag
+    if(node->node_kind==BREAK_NODE) isBreak = true;
 
     if(node->sibling) RunProgram(node->sibling, symbol_table, variables);
 }
